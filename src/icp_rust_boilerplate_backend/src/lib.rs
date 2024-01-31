@@ -6,9 +6,22 @@ use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemor
 use ic_stable_structures::{BoundedStorable, Cell, DefaultMemoryImpl, StableBTreeMap, Storable};
 use std::{borrow::Cow, cell::RefCell};
 
+// Define memory types
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 type IdCell = Cell<u64, Memory>;
 
+// Define common trait implementations for Storable
+trait CommonStorable: Storable + BoundedStorable {
+    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
+        Cow::Owned(Encode!(self).unwrap())
+    }
+
+    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
+        Decode!(bytes.as_ref(), Self).unwrap()
+    }
+}
+
+// Implement CommonStorable for Debt
 #[derive(candid::CandidType, Serialize, Deserialize, Default, Clone)]
 struct Debt {
     id: u64,
@@ -18,21 +31,12 @@ struct Debt {
     created_at: u64,
 }
 
-impl Storable for Debt {
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
-        Cow::Owned(Encode!(self).unwrap())
-    }
-
-    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
-        Decode!(bytes.as_ref(), Self).unwrap()
-    }
-}
-
-impl BoundedStorable for Debt {
+impl CommonStorable for Debt {
     const MAX_SIZE: u32 = 1024;
     const IS_FIXED_SIZE: bool = false;
 }
 
+// Implement CommonStorable for Escrow
 #[derive(candid::CandidType, Serialize, Deserialize, Default, Clone)]
 struct Escrow {
     debt_id: u64,
@@ -40,21 +44,12 @@ struct Escrow {
     created_at: u64,
 }
 
-impl Storable for Escrow {
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
-        Cow::Owned(Encode!(self).unwrap())
-    }
-
-    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
-        Decode!(bytes.as_ref(), Self).unwrap()
-    }
-}
-
-impl BoundedStorable for Escrow {
+impl CommonStorable for Escrow {
     const MAX_SIZE: u32 = 1024;
     const IS_FIXED_SIZE: bool = false;
 }
 
+// Implement CommonStorable for CropInsurance
 #[derive(candid::CandidType, Serialize, Deserialize, Default, Clone)]
 struct CropInsurance {
     id: u64,
@@ -65,21 +60,12 @@ struct CropInsurance {
     coverage_end_date: u64,
 }
 
-impl Storable for CropInsurance {
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
-        Cow::Owned(Encode!(self).unwrap())
-    }
-
-    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
-        Decode!(bytes.as_ref(), Self).unwrap()
-    }
-}
-
-impl BoundedStorable for CropInsurance {
+impl CommonStorable for CropInsurance {
     const MAX_SIZE: u32 = 1024;
     const IS_FIXED_SIZE: bool = false;
 }
 
+// Implement CommonStorable for InsuranceClaim
 #[derive(candid::CandidType, Serialize, Deserialize, Default, Clone)]
 struct InsuranceClaim {
     insurance_id: u64,
@@ -87,21 +73,12 @@ struct InsuranceClaim {
     claim_date: u64,
 }
 
-impl Storable for InsuranceClaim {
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
-        Cow::Owned(Encode!(self).unwrap())
-    }
-
-    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
-        Decode!(bytes.as_ref(), Self).unwrap()
-    }
-}
-
-impl BoundedStorable for InsuranceClaim {
+impl CommonStorable for InsuranceClaim {
     const MAX_SIZE: u32 = 1024;
     const IS_FIXED_SIZE: bool = false;
 }
 
+// Thread-local storage for various components
 thread_local! {
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> = RefCell::new(
         MemoryManager::init(DefaultMemoryImpl::default())
@@ -133,6 +110,7 @@ thread_local! {
     ));
 }
 
+// Payload structs for transactions
 #[derive(candid::CandidType, Serialize, Deserialize, Default)]
 struct DebtPayload {
     debtor: String,
@@ -161,12 +139,14 @@ struct InsuranceClaimPayload {
     claim_amount: u64,
 }
 
+// Error enum for transactions
 #[derive(candid::CandidType, Deserialize, Serialize)]
 enum Error {
     NotFound { msg: String },
     InvalidInput { msg: String },
 }
 
+// Query function to get debt by ID
 #[ic_cdk::query]
 fn get_debt(id: u64) -> Result<Debt, Error> {
     match _get_debt(&id) {
@@ -177,6 +157,7 @@ fn get_debt(id: u64) -> Result<Debt, Error> {
     }
 }
 
+// Query function to get escrow by debt ID
 #[ic_cdk::query]
 fn get_escrow(debt_id: u64) -> Result<Escrow, Error> {
     match _get_escrow(&debt_id) {
@@ -187,6 +168,7 @@ fn get_escrow(debt_id: u64) -> Result<Escrow, Error> {
     }
 }
 
+// Query function to get crop insurance by ID
 #[ic_cdk::query]
 fn get_crop_insurance(id: u64) -> Result<CropInsurance, Error> {
     match _get_crop_insurance(&id) {
@@ -197,6 +179,7 @@ fn get_crop_insurance(id: u64) -> Result<CropInsurance, Error> {
     }
 }
 
+// Query function to get insurance claim by ID
 #[ic_cdk::query]
 fn get_insurance_claim(claim_id: u64) -> Result<InsuranceClaim, Error> {
     match _get_insurance_claim(&claim_id) {
@@ -207,6 +190,7 @@ fn get_insurance_claim(claim_id: u64) -> Result<InsuranceClaim, Error> {
     }
 }
 
+// Update function to add a new debt
 #[ic_cdk::update]
 fn add_debt(debt: DebtPayload) -> Option<Debt> {
     // Validate input data
@@ -214,6 +198,7 @@ fn add_debt(debt: DebtPayload) -> Option<Debt> {
         return None; // Invalid input, return early
     }
 
+    // Generate a new ID
     let id = ID_COUNTER
         .with(|counter| {
             let current_value = *counter.borrow().get();
@@ -221,7 +206,8 @@ fn add_debt(debt: DebtPayload) -> Option<Debt> {
         })
         .expect("cannot increment id counter");
 
-    let debt = Debt {
+    // Create a new Debt instance
+    let new_debt = Debt {
         id,
         debtor: debt.debtor,
         creditor: debt.creditor,
@@ -229,10 +215,12 @@ fn add_debt(debt: DebtPayload) -> Option<Debt> {
         created_at: time(),
     };
 
-    do_insert_debt(&debt);
-    Some(debt)
+    // Insert the new debt into storage
+    do_insert_debt(&new_debt);
+    Some(new_debt)
 }
 
+// Update function to update an existing debt
 #[ic_cdk::update]
 fn update_debt(id: u64, payload: DebtPayload) -> Result<Debt, Error> {
     // Validate input data
@@ -242,11 +230,15 @@ fn update_debt(id: u64, payload: DebtPayload) -> Result<Debt, Error> {
         });
     }
 
+    // Try to find the existing debt
     match DEBT_STORAGE.with(|service| service.borrow().get(&id)) {
         Some(mut debt) => {
+            // Update the fields
             debt.debtor = payload.debtor;
             debt.creditor = payload.creditor;
             debt.amount = payload.amount;
+
+            // Insert the updated debt into storage
             do_insert_debt(&debt);
             Ok(debt)
         }
@@ -259,6 +251,7 @@ fn update_debt(id: u64, payload: DebtPayload) -> Result<Debt, Error> {
     }
 }
 
+// Update function to create a new escrow
 #[ic_cdk::update]
 fn create_escrow(payload: EscrowPayload) -> Result<Escrow, Error> {
     // Validate input data
@@ -268,21 +261,25 @@ fn create_escrow(payload: EscrowPayload) -> Result<Escrow, Error> {
         });
     }
 
+    // Try to find the associated debt
     match DEBT_STORAGE.with(|service| service.borrow().get(&payload.debt_id)) {
         Some(_) => {
-            let _id = ID_COUNTER
+            // Generate a new ID
+            let id = ID_COUNTER
                 .with(|counter| {
                     let current_value = *counter.borrow().get();
                     counter.borrow_mut().set(current_value + 1)
                 })
                 .expect("cannot increment id counter");
 
+            // Create a new Escrow instance
             let escrow = Escrow {
                 debt_id: payload.debt_id,
                 amount: payload.amount,
                 created_at: time(),
             };
 
+            // Insert the new escrow into storage
             do_insert_escrow(&escrow);
             Ok(escrow)
         }
@@ -295,13 +292,18 @@ fn create_escrow(payload: EscrowPayload) -> Result<Escrow, Error> {
     }
 }
 
+// Update function to purchase crop insurance
 #[ic_cdk::update]
 fn purchase_crop_insurance(payload: CropInsurancePayload) -> Option<CropInsurance> {
     // Validate input data
-    if payload.farmer.is_empty() || payload.crop_type.is_empty() || payload.coverage_amount == 0 {
+    if payload.farmer.is_empty()
+        || payload.crop_type.is_empty()
+        || payload.coverage_amount == 0
+    {
         return None; // Invalid input, return early
     }
 
+    // Generate a new ID
     let id = ID_COUNTER
         .with(|counter| {
             let current_value = *counter.borrow().get();
@@ -309,6 +311,7 @@ fn purchase_crop_insurance(payload: CropInsurancePayload) -> Option<CropInsuranc
         })
         .expect("cannot increment id counter");
 
+    // Create a new CropInsurance instance
     let insurance = CropInsurance {
         id,
         farmer: payload.farmer,
@@ -318,14 +321,18 @@ fn purchase_crop_insurance(payload: CropInsurancePayload) -> Option<CropInsuranc
         coverage_end_date: payload.coverage_end_date,
     };
 
+    // Insert the new insurance into storage
     CROP_INSURANCE_STORAGE.with(|service| service.borrow_mut().insert(id, insurance.clone()));
     Some(insurance)
 }
 
+// Update function to submit an insurance claim
 #[ic_cdk::update]
 fn submit_insurance_claim(payload: InsuranceClaimPayload) -> Result<InsuranceClaim, Error> {
+    // Try to find the associated crop insurance
     match CROP_INSURANCE_STORAGE.with(|service| service.borrow().get(&payload.insurance_id)) {
-        Some(_insurance) => {
+        Some(_) => {
+            // Generate a new ID
             let claim_id = ID_COUNTER
                 .with(|counter| {
                     let current_value = *counter.borrow().get();
@@ -333,12 +340,14 @@ fn submit_insurance_claim(payload: InsuranceClaimPayload) -> Result<InsuranceCla
                 })
                 .expect("cannot increment id counter");
 
+            // Create a new InsuranceClaim instance
             let claim = InsuranceClaim {
                 insurance_id: payload.insurance_id,
                 claim_amount: payload.claim_amount,
                 claim_date: time(),
             };
 
+            // Insert the new claim into storage
             INSURANCE_CLAIM_STORAGE.with(|service| service.borrow_mut().insert(claim_id, claim.clone()));
             Ok(claim)
         }
@@ -351,31 +360,36 @@ fn submit_insurance_claim(payload: InsuranceClaimPayload) -> Result<InsuranceCla
     }
 }
 
+// Helper function to insert a debt into storage
 fn do_insert_debt(debt: &Debt) {
     DEBT_STORAGE.with(|service| service.borrow_mut().insert(debt.id, debt.clone()));
 }
 
+// Helper function to insert an escrow into storage
 fn do_insert_escrow(escrow: &Escrow) {
     ESCROW_STORAGE
         .with(|service| service.borrow_mut().insert(escrow.debt_id, escrow.clone()));
 }
 
+// Helper function to get a debt by ID
 fn _get_debt(id: &u64) -> Option<Debt> {
     DEBT_STORAGE.with(|service| service.borrow().get(id))
 }
 
+// Helper function to get an escrow by debt ID
 fn _get_escrow(debt_id: &u64) -> Option<Escrow> {
     ESCROW_STORAGE.with(|service| service.borrow().get(debt_id))
 }
 
+// Helper function to get crop insurance by ID
 fn _get_crop_insurance(id: &u64) -> Option<CropInsurance> {
     CROP_INSURANCE_STORAGE.with(|service| service.borrow().get(id))
 }
 
+// Helper function to get an insurance claim by ID
 fn _get_insurance_claim(claim_id: &u64) -> Option<InsuranceClaim> {
     INSURANCE_CLAIM_STORAGE.with(|service| service.borrow().get(claim_id))
 }
 
-
-    // need this to generate candid
-    ic_cdk::export_candid!();
+// Export Candid
+ic_cdk::export_candid!();
